@@ -18,14 +18,15 @@ type Handler struct {
 }
 
 type createRequest struct {
-	Title        string `json:"title" binding:"required"`
-	Description  string `json:"description" binding:"required"`
-	PriceOre     int32  `json:"price_ore" binding:"required,min=0"`
-	Category     string `json:"category" binding:"required"`
-	Subcategory  string `json:"subcategory"`
-	Condition    string `json:"condition" binding:"required"`
-	County       string `json:"county" binding:"required"`
-	Municipality string `json:"municipality" binding:"required"`
+	Title        string   `json:"title" binding:"required"`
+	Description  string   `json:"description" binding:"required"`
+	PriceOre     int32    `json:"price_ore" binding:"required,min=0"`
+	Category     string   `json:"category" binding:"required"`
+	Subcategory  string   `json:"subcategory"`
+	Condition    string   `json:"condition" binding:"required"`
+	County       string   `json:"county" binding:"required"`
+	Municipality string   `json:"municipality" binding:"required"`
+	Images       []string `json:"images"`
 }
 
 func (h *Handler) Create(c *gin.Context) {
@@ -58,6 +59,14 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
+	for i, url := range req.Images {
+		_, _ = h.Queries.AddListingImage(context.Background(), db.AddListingImageParams{
+			ListingID: listing.ID,
+			Url:       url,
+			SortOrder: int32(i),
+		})
+	}
+
 	c.JSON(http.StatusCreated, listing)
 }
 
@@ -73,7 +82,22 @@ func (h *Handler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, listings)
+
+	// Attach images to each listing
+	type listingWithImages struct {
+		db.Listing
+		Images []db.ListingImage `json:"images"`
+	}
+	result := make([]listingWithImages, 0, len(listings))
+	for _, l := range listings {
+		imgs, _ := h.Queries.GetImagesByListing(context.Background(), l.ID)
+		if imgs == nil {
+			imgs = []db.ListingImage{}
+		}
+		result = append(result, listingWithImages{Listing: l, Images: imgs})
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *Handler) GetOne(c *gin.Context) {
@@ -87,7 +111,33 @@ func (h *Handler) GetOne(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
 		return
 	}
-	c.JSON(http.StatusOK, listing)
+
+	images, _ := h.Queries.GetImagesByListing(context.Background(), listing.ID)
+
+	// Find similar listings in the same category
+	similar, _ := h.Queries.GetSimilarListings(context.Background(), db.GetSimilarListingsParams{
+		Category: listing.Category,
+		ID:       listing.ID,
+	})
+
+	type listingWithImages struct {
+		db.Listing
+		Images []db.ListingImage `json:"images"`
+	}
+	similarOut := make([]listingWithImages, 0, len(similar))
+	for _, s := range similar {
+		imgs, _ := h.Queries.GetImagesByListing(context.Background(), s.ID)
+		if imgs == nil {
+			imgs = []db.ListingImage{}
+		}
+		similarOut = append(similarOut, listingWithImages{Listing: s, Images: imgs})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"listing": listing,
+		"images":  images,
+		"similar": similarOut,
+	})
 }
 
 func (h *Handler) Update(c *gin.Context) {
@@ -230,7 +280,6 @@ func (h *Handler) Search(c *gin.Context) {
 	c.JSON(http.StatusOK, results)
 }
 
-// GET /api/listings/mine  (protected)
 func (h *Handler) Mine(c *gin.Context) {
 	userIDStr := c.GetString("userID")
 	userID, err := uuid.Parse(userIDStr)
@@ -244,5 +293,58 @@ func (h *Handler) Mine(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, listings)
+
+	type listingWithImages struct {
+		db.Listing
+		Images []db.ListingImage `json:"images"`
+	}
+	out := make([]listingWithImages, 0, len(listings))
+	for _, l := range listings {
+		imgs, _ := h.Queries.GetImagesByListing(context.Background(), l.ID)
+		if imgs == nil {
+			imgs = []db.ListingImage{}
+		}
+		out = append(out, listingWithImages{Listing: l, Images: imgs})
+	}
+
+	c.JSON(http.StatusOK, out)
+}
+
+type statusRequest struct {
+	Status string `json:"status" binding:"required"`
+}
+
+func (h *Handler) SetStatus(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	existing, err := h.Queries.GetListingByID(context.Background(), pgUUID(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
+		return
+	}
+
+	userIDStr := c.GetString("userID")
+	if existing.UserID.Bytes != mustParse(userIDStr) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "ikke din annonse"})
+		return
+	}
+
+	var req statusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.Queries.UpdateListingStatus(context.Background(), db.UpdateListingStatusParams{
+		ID:     pgUUID(id),
+		Status: req.Status,
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "status oppdatert"})
 }

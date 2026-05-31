@@ -36,6 +36,7 @@ type Listing struct {
 	Municipality string             `json:"municipality"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	Status       string             `json:"status"`
 }
 
 type ListingImage struct {

@@ -26,3 +26,12 @@ RETURNING *;
 
 -- name: DeleteListing :exec
 DELETE FROM listings WHERE id = $1;
+
+-- name: GetSimilarListings :many
+SELECT * FROM listings
+WHERE category = $1 AND id != $2
+ORDER BY created_at DESC
+LIMIT 4;
+
+-- name: UpdateListingStatus :exec
+UPDATE listings SET status = $2 WHERE id = $1;

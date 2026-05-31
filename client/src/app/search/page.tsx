@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 
+type Image = { id: string; url: string };
 type Listing = {
   id: string;
   title: string;
@@ -12,6 +13,7 @@ type Listing = {
   category: string;
   county: string;
   municipality: string;
+  images?: Image[];
 };
 
 export default function SearchPage() {
@@ -24,12 +26,23 @@ export default function SearchPage() {
     max_price: "",
     sort_by: "newest",
   });
+  const [showFilters, setShowFilters] = useState(false);
   const [results, setResults] = useState<Listing[]>([]);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
 
   function update(field: string, value: string) {
     setFilters((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function activeFilterCount() {
+    let n = 0;
+    if (filters.category) n++;
+    if (filters.county) n++;
+    if (filters.min_price) n++;
+    if (filters.max_price) n++;
+    if (filters.sort_by !== "newest") n++;
+    return n;
   }
 
   async function handleSearch(e: React.FormEvent) {
@@ -57,80 +70,153 @@ export default function SearchPage() {
     }
   }
 
-  return (
-    <main className="max-w-5xl mx-auto p-8">
-      <h1 className="text-2xl font-bold mb-6">Search listings</h1>
+  function clearFilters() {
+    setFilters((prev) => ({
+      ...prev,
+      category: "",
+      county: "",
+      min_price: "",
+      max_price: "",
+      sort_by: "newest",
+    }));
+  }
 
-      <form onSubmit={handleSearch} className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
-        <input
-          placeholder="Search words..."
-          value={filters.query}
-          onChange={(e) => update("query", e.target.value)}
-          className="border rounded px-3 py-2 sm:col-span-2"
-        />
-        <input
-          placeholder="Category"
-          value={filters.category}
-          onChange={(e) => update("category", e.target.value)}
-          className="border rounded px-3 py-2"
-        />
-        <input
-          placeholder="County"
-          value={filters.county}
-          onChange={(e) => update("county", e.target.value)}
-          className="border rounded px-3 py-2"
-        />
-        <input
-          type="number"
-          placeholder="Min price (kr)"
-          value={filters.min_price}
-          onChange={(e) => update("min_price", e.target.value)}
-          className="border rounded px-3 py-2"
-        />
-        <input
-          type="number"
-          placeholder="Max price (kr)"
-          value={filters.max_price}
-          onChange={(e) => update("max_price", e.target.value)}
-          className="border rounded px-3 py-2"
-        />
-        <select
-          value={filters.sort_by}
-          onChange={(e) => update("sort_by", e.target.value)}
-          className="border rounded px-3 py-2"
-        >
-          <option value="newest">Newest first</option>
-          <option value="price_asc">Price: low to high</option>
-          <option value="price_desc">Price: high to low</option>
-        </select>
-        <button
-          type="submit"
-          disabled={loading}
-          className="bg-blue-600 text-white rounded py-2 hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? "Searching..." : "Search"}
-        </button>
+  const inputClass =
+    "w-full border border-line rounded-lg px-3 py-2 outline-none focus:border-brand";
+  const count = activeFilterCount();
+
+  return (
+    <main className="max-w-[1400px] mx-auto px-[5%] py-10">
+      <h1 className="text-2xl font-semibold mb-6 text-ink">Søk i annonser</h1>
+
+      <form onSubmit={handleSearch} className="mb-4">
+        <div className="flex gap-2">
+          <input
+            placeholder="Hva leter du etter?"
+            value={filters.query}
+            onChange={(e) => update("query", e.target.value)}
+            className="flex-1 px-5 py-3 rounded-full border border-line bg-surface text-ink outline-none focus:border-brand"
+          />
+          <button
+            type="button"
+            onClick={() => setShowFilters((s) => !s)}
+            className="px-5 py-3 rounded-full border border-line bg-surface text-ink-secondary font-medium hover:border-brand hover:text-brand flex items-center gap-2"
+          >
+            Filter
+            {count > 0 && (
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-brand text-white text-xs">
+                {count}
+              </span>
+            )}
+            <span className={`transition-transform ${showFilters ? "rotate-180" : ""}`}>▾</span>
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-6 py-3 rounded-full bg-brand text-white font-medium hover:bg-brand-dark disabled:opacity-50"
+          >
+            {loading ? "Søker..." : "Søk"}
+          </button>
+        </div>
+
+        {showFilters && (
+          <div className="mt-3 bg-surface border border-line rounded-2xl p-5 shadow-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Kategori</label>
+                <input
+                  placeholder="f.eks. møbler"
+                  value={filters.category}
+                  onChange={(e) => update("category", e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Fylke</label>
+                <input
+                  placeholder="f.eks. Oslo"
+                  value={filters.county}
+                  onChange={(e) => update("county", e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Sortering</label>
+                <select
+                  value={filters.sort_by}
+                  onChange={(e) => update("sort_by", e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="newest">Nyeste først</option>
+                  <option value="price_asc">Pris: lav til høy</option>
+                  <option value="price_desc">Pris: høy til lav</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Min pris (kr)</label>
+                <input
+                  type="number"
+                  value={filters.min_price}
+                  onChange={(e) => update("min_price", e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Maks pris (kr)</label>
+                <input
+                  type="number"
+                  value={filters.max_price}
+                  onChange={(e) => update("max_price", e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+            {count > 0 && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="mt-3 text-sm text-ink-secondary hover:text-brand underline"
+              >
+                Nullstill filtre
+              </button>
+            )}
+          </div>
+        )}
       </form>
 
       {searched && results.length === 0 && (
-        <p className="text-gray-500">No listings match your search.</p>
+        <p className="text-ink-secondary mt-6">Ingen annonser matcher søket ditt.</p>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
         {results.map((listing) => (
           <div
             key={listing.id}
             onClick={() => router.push(`/listings/${listing.id}`)}
-            className="cursor-pointer border rounded-lg p-4 hover:shadow-md transition"
+            className="group cursor-pointer rounded-2xl overflow-hidden border border-line bg-surface shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-xl"
           >
-            <h2 className="font-semibold text-lg">{listing.title}</h2>
-            <p className="text-gray-600 text-sm mt-1 line-clamp-2">{listing.description}</p>
-            <p className="text-blue-600 font-bold mt-2">
-              {(listing.price_ore / 100).toLocaleString("nb-NO")} kr
-            </p>
-            <p className="text-gray-400 text-xs mt-1">
-              {listing.municipality}, {listing.county}
-            </p>
+            <div className="h-48 w-full overflow-hidden bg-subtle">
+              {listing.images && listing.images.length > 0 ? (
+                <img
+                  src={listing.images[0].url}
+                  alt={listing.title}
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-sm text-ink-muted">
+                  Ingen bilde
+                </div>
+              )}
+            </div>
+            <div className="p-4">
+              <h3 className="font-medium truncate text-ink">{listing.title}</h3>
+              <p className="font-semibold mt-1 text-lg text-ink">
+                {(listing.price_ore / 100).toLocaleString("nb-NO")} kr
+              </p>
+              <p className="text-sm mt-1 text-ink-secondary">
+                {listing.municipality}, {listing.county}
+              </p>
+            </div>
           </div>
         ))}
       </div>

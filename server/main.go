@@ -6,6 +6,7 @@ import (
 	"github.com/SamiCenkci/Shopping-Website/db"
 	dbgen "github.com/SamiCenkci/Shopping-Website/db/generated"
 	"github.com/SamiCenkci/Shopping-Website/listing"
+	"github.com/SamiCenkci/Shopping-Website/upload"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -23,6 +24,13 @@ func main() {
 	}
 
 	listingHandler := &listing.Handler{Queries: queries, Pool: pool}
+
+	uploadHandler := &upload.Handler{
+		Region:    cfg.AWSRegion,
+		AccessKey: cfg.AWSAccessKeyID,
+		SecretKey: cfg.AWSSecretAccessKey,
+		Bucket:    cfg.S3Bucket,
+	}
 
 	router := gin.Default()
 
@@ -52,6 +60,8 @@ func main() {
 		api.POST("/listings", auth.RequireAuth(cfg.JWTSecret), listingHandler.Create)
 		api.PUT("/listings/:id", auth.RequireAuth(cfg.JWTSecret), listingHandler.Update)
 		api.DELETE("/listings/:id", auth.RequireAuth(cfg.JWTSecret), listingHandler.Delete)
+		api.POST("/uploads/presign", auth.RequireAuth(cfg.JWTSecret), uploadHandler.Presign)
+		api.PUT("/listings/:id/status", auth.RequireAuth(cfg.JWTSecret), listingHandler.SetStatus)
 	}
 
 	router.Run(":" + cfg.Port)

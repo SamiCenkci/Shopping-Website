@@ -14,7 +14,7 @@ import (
 const createListing = `-- name: CreateListing :one
 INSERT INTO listings (user_id, title, description, price_ore, category, subcategory, condition, county, municipality)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, user_id, title, description, price_ore, category, subcategory, condition, county, municipality, created_at, updated_at
+RETURNING id, user_id, title, description, price_ore, category, subcategory, condition, county, municipality, created_at, updated_at, status
 `
 
 type CreateListingParams struct {
@@ -55,6 +55,7 @@ func (q *Queries) CreateListing(ctx context.Context, arg CreateListingParams) (L
 		&i.Municipality,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Status,
 	)
 	return i, err
 }
@@ -69,7 +70,7 @@ func (q *Queries) DeleteListing(ctx context.Context, id pgtype.UUID) error {
 }
 
 const getListingByID = `-- name: GetListingByID :one
-SELECT id, user_id, title, description, price_ore, category, subcategory, condition, county, municipality, created_at, updated_at FROM listings WHERE id = $1
+SELECT id, user_id, title, description, price_ore, category, subcategory, condition, county, municipality, created_at, updated_at, status FROM listings WHERE id = $1
 `
 
 func (q *Queries) GetListingByID(ctx context.Context, id pgtype.UUID) (Listing, error) {
@@ -88,12 +89,59 @@ func (q *Queries) GetListingByID(ctx context.Context, id pgtype.UUID) (Listing, 
 		&i.Municipality,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Status,
 	)
 	return i, err
 }
 
+const getSimilarListings = `-- name: GetSimilarListings :many
+SELECT id, user_id, title, description, price_ore, category, subcategory, condition, county, municipality, created_at, updated_at, status FROM listings
+WHERE category = $1 AND id != $2
+ORDER BY created_at DESC
+LIMIT 4
+`
+
+type GetSimilarListingsParams struct {
+	Category string      `json:"category"`
+	ID       pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) GetSimilarListings(ctx context.Context, arg GetSimilarListingsParams) ([]Listing, error) {
+	rows, err := q.db.Query(ctx, getSimilarListings, arg.Category, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Listing
+	for rows.Next() {
+		var i Listing
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Description,
+			&i.PriceOre,
+			&i.Category,
+			&i.Subcategory,
+			&i.Condition,
+			&i.County,
+			&i.Municipality,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listListings = `-- name: ListListings :many
-SELECT id, user_id, title, description, price_ore, category, subcategory, condition, county, municipality, created_at, updated_at FROM listings
+SELECT id, user_id, title, description, price_ore, category, subcategory, condition, county, municipality, created_at, updated_at, status FROM listings
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
 `
@@ -125,6 +173,7 @@ func (q *Queries) ListListings(ctx context.Context, arg ListListingsParams) ([]L
 			&i.Municipality,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -137,7 +186,7 @@ func (q *Queries) ListListings(ctx context.Context, arg ListListingsParams) ([]L
 }
 
 const listListingsByUser = `-- name: ListListingsByUser :many
-SELECT id, user_id, title, description, price_ore, category, subcategory, condition, county, municipality, created_at, updated_at FROM listings
+SELECT id, user_id, title, description, price_ore, category, subcategory, condition, county, municipality, created_at, updated_at, status FROM listings
 WHERE user_id = $1
 ORDER BY created_at DESC
 `
@@ -164,6 +213,7 @@ func (q *Queries) ListListingsByUser(ctx context.Context, userID pgtype.UUID) ([
 			&i.Municipality,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -181,7 +231,7 @@ SET title = $2, description = $3, price_ore = $4, category = $5,
     subcategory = $6, condition = $7, county = $8, municipality = $9,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, user_id, title, description, price_ore, category, subcategory, condition, county, municipality, created_at, updated_at
+RETURNING id, user_id, title, description, price_ore, category, subcategory, condition, county, municipality, created_at, updated_at, status
 `
 
 type UpdateListingParams struct {
@@ -222,6 +272,21 @@ func (q *Queries) UpdateListing(ctx context.Context, arg UpdateListingParams) (L
 		&i.Municipality,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Status,
 	)
 	return i, err
+}
+
+const updateListingStatus = `-- name: UpdateListingStatus :exec
+UPDATE listings SET status = $2 WHERE id = $1
+`
+
+type UpdateListingStatusParams struct {
+	ID     pgtype.UUID `json:"id"`
+	Status string      `json:"status"`
+}
+
+func (q *Queries) UpdateListingStatus(ctx context.Context, arg UpdateListingStatusParams) error {
+	_, err := q.db.Exec(ctx, updateListingStatus, arg.ID, arg.Status)
+	return err
 }

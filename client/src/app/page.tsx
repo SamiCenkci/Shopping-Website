@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { CATEGORIES } from "@/lib/categories";
 
+type Image = { id: string; url: string };
 type Listing = {
   id: string;
   title: string;
@@ -11,45 +14,223 @@ type Listing = {
   category: string;
   county: string;
   municipality: string;
+  images?: Image[];
 };
 
 export default function HomePage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [filters, setFilters] = useState({
+    query: "",
+    category: "",
+    county: "",
+    min_price: "",
+    max_price: "",
+    sort_by: "newest",
+  });
+  const [isSearchResult, setIsSearchResult] = useState(false);
 
+  // Load all listings, and pick up ?q= from the navbar search
   useEffect(() => {
-    api("/api/listings")
-      .then((data) => setListings(data ?? []))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
+    const q = searchParams.get("q") ?? "";
+    if (q) {
+      setFilters((prev) => ({ ...prev, query: q }));
+      runSearch({ query: q });
+    } else {
+      api("/api/listings")
+        .then((data) => setListings(data ?? []))
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
-  if (loading) return <p className="p-8">Loading listings...</p>;
-  if (error) return <p className="p-8 text-red-600">{error}</p>;
+  function update(field: string, value: string) {
+    setFilters((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function runSearch(override?: Partial<typeof filters>) {
+    setLoading(true);
+    const f = { ...filters, ...override };
+    try {
+      const body = {
+        query: f.query,
+        category: f.category,
+        county: f.county,
+        min_price: f.min_price ? Math.round(parseFloat(f.min_price) * 100) : 0,
+        max_price: f.max_price ? Math.round(parseFloat(f.max_price) * 100) : 0,
+        sort_by: f.sort_by,
+      };
+      const data = await api("/api/listings/search", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setListings(data ?? []);
+      setIsSearchResult(true);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resetAll() {
+    setFilters({ query: "", category: "", county: "", min_price: "", max_price: "", sort_by: "newest" });
+    setLoading(true);
+    try {
+      const data = await api("/api/listings");
+      setListings(data ?? []);
+      setIsSearchResult(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function pickCategory(cat: string) {
+    const next = filters.category === cat ? "" : cat;
+    setFilters((prev) => ({ ...prev, category: next }));
+    runSearch({ category: next });
+  }
+
+  const inputClass = "w-full border border-line rounded-lg px-3 py-2 text-sm outline-none focus:border-brand";
 
   return (
-    <main className="max-w-5xl mx-auto p-8">
-      <h1 className="text-3xl font-bold mb-6">Marketplace</h1>
-
-      {listings.length === 0 ? (
-        <p className="text-gray-500">No listings yet. Be the first to post!</p>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {listings.map((listing) => (
-            <a key={listing.id} href={`/listings/${listing.id}`} className="block border rounded-lg p-4 hover:shadow-md transition">
-              <h2 className="font-semibold text-lg">{listing.title}</h2>
-              <p className="text-gray-600 text-sm mt-1 line-clamp-2">{listing.description}</p>
-              <p className="text-blue-600 font-bold mt-2">
-                {(listing.price_ore / 100).toLocaleString("nb-NO")} kr
-              </p>
-              <p className="text-gray-400 text-xs mt-1">
-                {listing.municipality}, {listing.county}
-              </p>
-            </a>
-          ))}
+    <main>
+      <div className="border-b border-line bg-surface">
+        <div className="max-w-[1400px] mx-auto px-[5%]">
+          <nav className="flex gap-1 overflow-x-auto">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => pickCategory(cat)}
+                className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                  filters.category === cat
+                    ? "border-brand text-brand"
+                    : "border-transparent text-ink-secondary hover:text-ink"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </nav>
         </div>
-      )}
+      </div>
+
+      <div className="max-w-[1400px] mx-auto px-[5%] py-8 flex gap-8">
+        <aside className="w-64 shrink-0 hidden lg:block">
+          <div className="bg-surface border border-line rounded-2xl p-5 shadow-sm sticky top-24">
+            <h2 className="font-semibold text-ink mb-4">Filtrer søk</h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Søkeord</label>
+                <input value={filters.query} onChange={(e) => update("query", e.target.value)} className={inputClass} placeholder="Søkeord..." />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Kategori</label>
+                <select value={filters.category} onChange={(e) => update("category", e.target.value)} className={inputClass}>
+                  <option value="">Alle kategorier</option>
+                  {CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Fylke</label>
+                <input value={filters.county} onChange={(e) => update("county", e.target.value)} className={inputClass} placeholder="f.eks. Oslo" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Fra kr</label>
+                  <input type="number" value={filters.min_price} onChange={(e) => update("min_price", e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Til kr</label>
+                  <input type="number" value={filters.max_price} onChange={(e) => update("max_price", e.target.value)} className={inputClass} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Sortering</label>
+                <select value={filters.sort_by} onChange={(e) => update("sort_by", e.target.value)} className={inputClass}>
+                  <option value="newest">Nyeste først</option>
+                  <option value="price_asc">Pris: lav til høy</option>
+                  <option value="price_desc">Pris: høy til lav</option>
+                </select>
+              </div>
+
+              <button onClick={() => runSearch()} className="w-full bg-brand text-white rounded-lg py-2 font-medium hover:bg-brand-dark">
+                Bruk filtre
+              </button>
+              {isSearchResult && (
+                <button onClick={resetAll} className="w-full text-sm text-ink-secondary hover:text-brand underline">
+                  Nullstill
+                </button>
+              )}
+            </div>
+          </div>
+        </aside>
+
+        <section className="flex-1">
+          <div className="flex items-center justify-between mb-5">
+            <h1 className="text-xl font-semibold text-ink">
+              {isSearchResult ? "Søkeresultater" : "Siste annonser"}
+              <span className="text-ink-muted font-normal text-base ml-2">
+                ({listings.length})
+              </span>
+            </h1>
+          </div>
+
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="rounded-2xl overflow-hidden border border-line bg-surface">
+                  <div className="h-44 bg-subtle animate-pulse" />
+                  <div className="p-4 space-y-2">
+                    <div className="h-4 bg-subtle rounded animate-pulse" />
+                    <div className="h-4 w-1/2 bg-subtle rounded animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : listings.length === 0 ? (
+            <div className="bg-surface border border-line rounded-2xl p-16 text-center">
+              <p className="text-ink-secondary">
+                {isSearchResult ? "Ingen annonser matcher søket ditt." : "Ingen annonser ennå."}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+              {listings.map((listing) => (
+                <div
+                  key={listing.id}
+                  onClick={() => router.push(`/listings/${listing.id}`)}
+                  className="group cursor-pointer rounded-2xl overflow-hidden border border-line bg-surface shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-xl"
+                >
+                  <div className="h-44 w-full overflow-hidden bg-subtle relative">
+                    {listing.images && listing.images.length > 0 ? (
+                      <img src={listing.images[0].url} alt={listing.title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-sm text-ink-muted">Ingen bilde</div>
+                    )}
+                    <span className="absolute top-3 left-3 px-2 py-1 rounded-full text-xs font-medium bg-surface/90 text-ink-secondary backdrop-blur">
+                      {listing.category}
+                    </span>
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-medium truncate text-ink">{listing.title}</h3>
+                    <p className="font-semibold mt-1 text-lg text-ink">
+                      {(listing.price_ore / 100).toLocaleString("nb-NO")} kr
+                    </p>
+                    <p className="text-sm mt-1 text-ink-secondary">{listing.municipality}, {listing.county}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </main>
   );
 }
