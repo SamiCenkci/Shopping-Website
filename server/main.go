@@ -1,23 +1,58 @@
 package main
 
 import (
-    "net/http"
-    "github.com/gin-gonic/gin"
+	"github.com/SamiCenkci/Shopping-Website/auth"
+	"github.com/SamiCenkci/Shopping-Website/config"
+	"github.com/SamiCenkci/Shopping-Website/db"
+	dbgen "github.com/SamiCenkci/Shopping-Website/db/generated"
+	"github.com/SamiCenkci/Shopping-Website/listing"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
-    // Create a new Gin router (this is your server)
-    router := gin.Default()
+	cfg := config.Load()
+	pool := db.Connect(cfg.DatabaseURL)
+	defer pool.Close()
 
-    // Define one route: GET /api/health
-    // When someone visits this URL, send back "Server is running!"
-    router.GET("/api/health", func(c *gin.Context) {
-        c.JSON(http.StatusOK, gin.H{
-            "status":  "ok",
-            "message": "Server is running!",
-        })
-    })
+	queries := dbgen.New(pool)
 
-    // Start the server on port 8080
-    router.Run(":8080")
+	authHandler := &auth.Handler{
+		Queries:   queries,
+		JWTSecret: cfg.JWTSecret,
+	}
+
+	listingHandler := &listing.Handler{Queries: queries, Pool: pool}
+
+	router := gin.Default()
+
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+	}))
+
+	api := router.Group("/api")
+	{
+		api.GET("/health", func(c *gin.Context) {
+			c.JSON(200, gin.H{"status": "ok"})
+		})
+		api.POST("/auth/signup", authHandler.Register)
+		api.POST("/auth/login", authHandler.Login)
+
+		api.GET("/me", auth.RequireAuth(cfg.JWTSecret), func(c *gin.Context) {
+			c.JSON(200, gin.H{"user_id": c.GetString("userID")})
+		})
+
+		api.GET("/listings", listingHandler.List)
+		api.GET("/listings/mine", auth.RequireAuth(cfg.JWTSecret), listingHandler.Mine)
+		api.POST("/listings/search", listingHandler.Search)
+		api.GET("/listings/:id", listingHandler.GetOne)
+		api.POST("/listings", auth.RequireAuth(cfg.JWTSecret), listingHandler.Create)
+		api.PUT("/listings/:id", auth.RequireAuth(cfg.JWTSecret), listingHandler.Update)
+		api.DELETE("/listings/:id", auth.RequireAuth(cfg.JWTSecret), listingHandler.Delete)
+	}
+
+	router.Run(":" + cfg.Port)
 }
