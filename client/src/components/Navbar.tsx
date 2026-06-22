@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { api } from "@/lib/api";
 
 export default function Navbar() {
   const router = useRouter();
@@ -12,6 +13,7 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
   const [showRecent, setShowRecent] = useState(false);
+  const [unread, setUnread] = useState(0);
   const isAuthPage = pathname === "/login" || pathname === "/signup";
 
   useEffect(() => {
@@ -26,6 +28,41 @@ export default function Navbar() {
     }
     setMenuOpen(false);
   }, [pathname]);
+
+  function loadUnread() {
+    if (!localStorage.getItem("token")) {
+      setUnread(0);
+      return;
+    }
+    api("/api/messages/unread-count")
+      .then((data) => setUnread(data.count ?? 0))
+      .catch(() => {});
+  }
+
+  // Fetch unread count on mount and whenever the route changes
+  useEffect(() => {
+    loadUnread();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  // Real-time: listen for new messages and refresh the count
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+    const wsUrl = apiUrl.replace(/^http/, "ws");
+    const ws = new WebSocket(`${wsUrl}/api/ws?token=${token}`);
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "message") {
+          loadUnread();
+        }
+      } catch {}
+    };
+    return () => ws.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedIn]);
 
   function loadRecent() {
     try {
@@ -43,6 +80,7 @@ export default function Navbar() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setLoggedIn(false);
+    setUnread(0);
     router.push("/");
   }
 
@@ -65,6 +103,13 @@ export default function Navbar() {
 
   const linkClass = "px-3 py-2 rounded-lg text-ink-secondary hover:text-ink hover:bg-subtle font-medium text-left";
 
+  const badge =
+    unread > 0 ? (
+      <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[11px] font-semibold leading-none">
+        {unread > 9 ? "9+" : unread}
+      </span>
+    ) : null;
+
   return (
     <header className="sticky top-0 z-50 border-b border-line bg-surface/90 backdrop-blur-md">
       <div className="max-w-[1400px] mx-auto px-[5%] py-3.5 flex items-center gap-3">
@@ -76,7 +121,7 @@ export default function Navbar() {
           }}
           className="text-2xl font-bold text-brand shrink-0 tracking-tight hover:text-brand-dark"
         >
-          Total
+          Wisp
         </button>
 
         {/* Search with recent-searches dropdown */}
@@ -133,7 +178,7 @@ export default function Navbar() {
                 <>
                   <button onClick={() => go(`/profile/${userId}`)} className={linkClass}>Min profil</button>
                   <button onClick={() => go("/my-listings")} className={linkClass}>Mine annonser</button>
-                  <button onClick={() => go("/chat")} className={linkClass}>Meldinger</button>
+                  <button onClick={() => go("/chat")} className={`${linkClass} inline-flex items-center`}>Meldinger{badge}</button>
                   <button onClick={() => go("/new")} className="ml-1 px-4 py-2 rounded-xl text-white font-medium bg-brand hover:bg-brand-dark shadow-sm shrink-0">+ Ny annonse</button>
                   <button onClick={logout} className={linkClass}>Logg ut</button>
                 </>
@@ -148,10 +193,15 @@ export default function Navbar() {
             {/* Hamburger */}
             <button
               onClick={() => setMenuOpen((o) => !o)}
-              className="md:hidden shrink-0 w-10 h-10 rounded-lg border border-line text-ink flex items-center justify-center text-xl"
+              className="md:hidden shrink-0 w-10 h-10 rounded-lg border border-line text-ink flex items-center justify-center text-xl relative"
               aria-label="Meny"
             >
               {menuOpen ? "✕" : "☰"}
+              {!menuOpen && unread > 0 && (
+                <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[11px] font-semibold leading-none">
+                  {unread > 9 ? "9+" : unread}
+                </span>
+              )}
             </button>
           </>
         )}
@@ -164,7 +214,7 @@ export default function Navbar() {
             <>
               <button onClick={() => go(`/profile/${userId}`)} className={linkClass}>Min profil</button>
               <button onClick={() => go("/my-listings")} className={linkClass}>Mine annonser</button>
-              <button onClick={() => go("/chat")} className={linkClass}>Meldinger</button>
+              <button onClick={() => go("/chat")} className={`${linkClass} inline-flex items-center`}>Meldinger{badge}</button>
               <button onClick={() => go("/new")} className="px-3 py-2 rounded-lg text-white font-medium bg-brand hover:bg-brand-dark text-left">+ Ny annonse</button>
               <button onClick={logout} className={linkClass}>Logg ut</button>
             </>

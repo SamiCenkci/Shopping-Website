@@ -32,7 +32,7 @@ DELETE FROM listings WHERE id = $1;
 -- name: GetSimilarListings :many
 SELECT * FROM listings
 WHERE category = $1 AND id != $2
-  AND status = ''active'
+  AND status = 'active'
   AND created_at > NOW() - INTERVAL '60 days'
 ORDER BY created_at DESC
 LIMIT 4;

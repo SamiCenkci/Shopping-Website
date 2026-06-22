@@ -42,7 +42,7 @@ func main() {
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowOrigins:     cfg.AllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -60,10 +60,10 @@ func main() {
 			c.JSON(200, gin.H{"user_id": c.GetString("userID")})
 		})
 
-		api.GET("/listings", listingHandler.List)
+		api.GET("/listings", auth.OptionalAuth(cfg.JWTSecret), listingHandler.List)
 		api.GET("/listings/mine", auth.RequireAuth(cfg.JWTSecret), listingHandler.Mine)
-		api.POST("/listings/search", listingHandler.Search)
-		api.GET("/listings/:id", listingHandler.GetOne)
+		api.POST("/listings/search", auth.OptionalAuth(cfg.JWTSecret), listingHandler.Search)
+		api.GET("/listings/:id", auth.OptionalAuth(cfg.JWTSecret), listingHandler.GetOne)
 		api.POST("/listings", auth.RequireAuth(cfg.JWTSecret), listingHandler.Create)
 		api.PUT("/listings/:id", auth.RequireAuth(cfg.JWTSecret), listingHandler.Update)
 		api.DELETE("/listings/:id", auth.RequireAuth(cfg.JWTSecret), listingHandler.Delete)
@@ -77,8 +77,12 @@ func main() {
 		api.POST("/conversations", auth.RequireAuth(cfg.JWTSecret), chatHandler.Start)
 		api.GET("/conversations", auth.RequireAuth(cfg.JWTSecret), chatHandler.List)
 		api.GET("/conversations/:id/messages", auth.RequireAuth(cfg.JWTSecret), chatHandler.Messages)
+		api.GET("/messages/unread-count", auth.RequireAuth(cfg.JWTSecret), chatHandler.UnreadCount)
 		api.POST("/conversations/:id/messages", auth.RequireAuth(cfg.JWTSecret), chatHandler.Send)
 		api.GET("/ws", auth.RequireAuthWS(cfg.JWTSecret), chatHandler.WebSocket)
+		api.POST("/listings/:id/favorite", auth.RequireAuth(cfg.JWTSecret), listingHandler.AddFavorite)
+		api.DELETE("/listings/:id/favorite", auth.RequireAuth(cfg.JWTSecret), listingHandler.RemoveFavorite)
+		api.GET("/users/:id/favorites", auth.RequireAuth(cfg.JWTSecret), listingHandler.MyFavorites)
 	}
 
 	router.Run(":" + cfg.Port)

@@ -70,3 +70,19 @@ func RequireAuthWS(jwtSecret string) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// OptionalAuth reads the token if present and sets userID, but does NOT block
+// the request if there's no token. Used for public routes that want to know
+// who's viewing (e.g. to show "liked by me") when logged in.
+func OptionalAuth(jwtSecret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		header := c.GetHeader("Authorization")
+		parts := strings.SplitN(header, " ", 2)
+		if len(parts) == 2 && parts[0] == "Bearer" {
+			if userID, err := ParseToken(parts[1], jwtSecret); err == nil {
+				c.Set("userID", userID)
+			}
+		}
+		c.Next()
+	}
+}

@@ -5,6 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { expiryLabel } from "@/lib/expiry";
 
+const conditionLabels: Record<string, string> = {
+  new: "Ny",
+  like_new: "Som ny",
+  good: "God",
+  fair: "Brukbar",
+};
+
 type Image = { id: string; url: string };
 type Listing = {
   id: string;
@@ -17,6 +24,7 @@ type Listing = {
   municipality: string;
   created_at: string;
   status: string;
+  ad_type?: string;
   images?: Image[];
 };
 type Seller = {
@@ -34,6 +42,9 @@ export default function ListingDetailPage() {
   const [images, setImages] = useState<Image[]>([]);
   const [similar, setSimilar] = useState<Listing[]>([]);
   const [seller, setSeller] = useState<Seller | null>(null);
+  const [isOwn, setIsOwn] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [liked, setLiked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -45,11 +56,57 @@ export default function ListingDetailPage() {
         setImages(data.images ?? []);
         setSimilar(data.similar ?? []);
         setSeller(data.seller ?? null);
+        setLikeCount(data.like_count ?? 0);
+        setLiked(data.liked_by_me ?? false);
+        const stored = localStorage.getItem("user");
+        if (stored && data.seller) {
+          try {
+            const me = JSON.parse(stored);
+            setIsOwn(me.id === data.seller.id);
+          } catch {}
+        }
         window.scrollTo(0, 0);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [params.id]);
+
+  async function toggleLike() {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+    if (!listing) return;
+    try {
+      await api(`/api/listings/${listing.id}/favorite`, {
+        method: liked ? "DELETE" : "POST",
+      });
+      const data = await api(`/api/listings/${listing.id}`);
+      setLikeCount(data.like_count ?? 0);
+      setLiked(data.liked_by_me ?? false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Kunne ikke oppdatere");
+    }
+  }
+
+  async function startConversation() {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+    if (!seller || !listing) return;
+    try {
+      const conv = await api("/api/conversations", {
+        method: "POST",
+        body: JSON.stringify({ listing_id: listing.id, seller_id: seller.id }),
+      });
+      router.push(`/chat?c=${conv.id}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Kunne ikke starte samtale");
+    }
+  }
 
   if (loading) return <p className="max-w-3xl mx-auto px-[5%] py-10 text-ink-secondary">Laster...</p>;
   if (error) return <p className="max-w-3xl mx-auto px-[5%] py-10 text-red-600">{error}</p>;
@@ -91,41 +148,44 @@ export default function ListingDetailPage() {
         <div className="lg:sticky lg:top-24 self-start">
           <h1 className="text-3xl font-bold text-ink">{listing.title}</h1>
           <p className="text-3xl text-brand font-bold mt-3">
-            {(listing.price_ore / 100).toLocaleString("nb-NO")} kr
+            {listing.ad_type === "giveaway" ? "Gratis" : `${(listing.price_ore / 100).toLocaleString("nb-NO")} kr`}
           </p>
+
+          <button
+            onClick={toggleLike}
+            className={`mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-colors ${
+              liked
+                ? "border-brand bg-brand-lightest text-brand"
+                : "border-line text-ink-secondary hover:border-brand hover:text-brand"
+            }`}
+          >
+            <span>{liked ? "❤️" : "🤍"}</span>
+            <span>{likeCount} liker</span>
+          </button>
+
           <div className="flex gap-2 mt-4 text-sm">
             <span className="bg-brand-lightest text-brand rounded-full px-3 py-1">{listing.category}</span>
-            <span className="bg-subtle text-ink-secondary rounded-full px-3 py-1">{listing.condition}</span>
+            <span className="bg-subtle text-ink-secondary rounded-full px-3 py-1">{conditionLabels[listing.condition] ?? listing.condition}</span>
           </div>
           <p className="mt-5 text-ink whitespace-pre-wrap">{listing.description}</p>
           <div className="mt-5 pt-5 border-t border-line text-sm text-ink-secondary space-y-1">
             <p>📍 {listing.municipality}, {listing.county}</p>
             <p>⏱ {expiryLabel(listing.created_at)}</p>
           </div>
-          
-          <button
-            disabled={listing.status !== "active"}
-            onClick={async () => {
-              const token = localStorage.getItem("token");
-              if (!token) {
-                router.push("/login");
-                return;
-              }
-              if (!seller) return;
-              try {
-                const conv = await api("/api/conversations", {
-                  method: "POST",
-                  body: JSON.stringify({ listing_id: listing.id, seller_id: seller.id }),
-                });
-                router.push(`/chat?c=${conv.id}`);
-              } catch (err) {
-                alert(err instanceof Error ? err.message : "Kunne ikke starte samtale");
-              }
-            }}
-            className="mt-6 w-full bg-brand text-white rounded-lg py-3 font-medium hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {listing.status === "active" ? "Send melding til selger" : "Ikke tilgjengelig"}
-          </button>
+
+          {isOwn ? (
+            <div className="mt-6 w-full bg-subtle text-ink-muted rounded-lg py-3 font-medium text-center border border-line">
+              Dette er din egen annonse
+            </div>
+          ) : (
+            <button
+              disabled={listing.status !== "active"}
+              onClick={startConversation}
+              className="mt-6 w-full bg-brand text-white rounded-lg py-3 font-medium hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {listing.status === "active" ? "Send melding til selger" : "Ikke tilgjengelig"}
+            </button>
+          )}
 
           {seller && (
             <div
@@ -174,7 +234,7 @@ export default function ListingDetailPage() {
                 <div className="p-3">
                   <h3 className="font-medium text-sm truncate text-ink">{s.title}</h3>
                   <p className="font-semibold text-ink mt-0.5">
-                    {(s.price_ore / 100).toLocaleString("nb-NO")} kr
+                    {s.ad_type === "giveaway" ? "Gratis" : `${(s.price_ore / 100).toLocaleString("nb-NO")} kr`}
                   </p>
                 </div>
               </div>

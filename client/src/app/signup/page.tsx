@@ -23,46 +23,81 @@ export default function SignupPage() {
       });
       router.push("/login");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(err instanceof Error ? err.message : "Noe gikk galt");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
-        <h1 className="text-2xl font-semibold mb-6">Create account</h1>
+    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-[5%] py-12">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <button onClick={() => router.push("/")} className="text-3xl font-bold text-brand tracking-tight">
+            Wisp
+          </button>
+          <p className="text-ink-secondary mt-2">Opprett en konto</p>
+        </div>
 
-        {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
+        <form onSubmit={handleSubmit} className="bg-surface border border-line rounded-2xl shadow-lg p-8 space-y-5">
+          {error && (
+            <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
 
-        <input
-          type="text" placeholder="Name" value={name}
-          onChange={(e) => setName(e.target.value)} required
-          className="w-full border rounded px-3 py-2 mb-3"
-        />
-        <input
-          type="email" placeholder="Email" value={email}
-          onChange={(e) => setEmail(e.target.value)} required
-          className="w-full border rounded px-3 py-2 mb-3"
-        />
-        <input
-          type="password" placeholder="Password (min 8 chars)" value={password}
-          onChange={(e) => setPassword(e.target.value)} required
-          className="w-full border rounded px-3 py-2 mb-4"
-        />
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1.5">Navn</label>
+            <input
+              type="text"
+              placeholder="Ditt navn"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              className="w-full border border-line rounded-xl px-4 py-2.5 bg-subtle text-ink outline-none focus:bg-surface focus:border-brand"
+            />
+          </div>
 
-        <button
-          type="submit" disabled={loading}
-          className="w-full bg-blue-600 text-white rounded py-2 hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? "Creating..." : "Sign up"}
-        </button>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1.5">E-post</label>
+            <input
+              type="email"
+              placeholder="din@epost.no"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full border border-line rounded-xl px-4 py-2.5 bg-subtle text-ink outline-none focus:bg-surface focus:border-brand"
+            />
+          </div>
 
-        <p className="text-sm text-center mt-4">
-          Already have an account? <a href="/login" className="text-blue-600">Log in</a>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1.5">Passord</label>
+            <input
+              type="password"
+              placeholder="Minst 8 tegn"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full border border-line rounded-xl px-4 py-2.5 bg-subtle text-ink outline-none focus:bg-surface focus:border-brand"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-brand text-white rounded-xl py-3 font-medium hover:bg-brand-dark disabled:opacity-50 shadow-sm"
+          >
+            {loading ? "Oppretter..." : "Registrer deg"}
+          </button>
+        </form>
+
+        <p className="text-sm text-center mt-6 text-ink-secondary">
+          Har du allerede konto?{" "}
+          <button onClick={() => router.push("/login")} className="text-brand font-medium hover:text-brand-dark">
+            Logg inn
+          </button>
         </p>
-      </form>
+      </div>
     </div>
   );
 }

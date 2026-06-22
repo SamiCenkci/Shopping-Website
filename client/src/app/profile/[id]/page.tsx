@@ -32,6 +32,7 @@ export default function ProfilePage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOwn, setIsOwn] = useState(false);
+  const [favorites, setFavorites] = useState<Listing[]>([]);
 
   useEffect(() => {
     api(`/api/users/${params.id}`)
@@ -52,6 +53,17 @@ export default function ProfilePage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [params.id]);
+
+
+  useEffect(() => {
+    if (!isOwn) {
+      setFavorites([]);
+      return;
+    }
+    api(`/api/users/${params.id}/favorites`)
+      .then((data) => setFavorites(data ?? []))
+      .catch(() => setFavorites([]));
+  }, [isOwn, params.id]);
 
   if (loading) return <p className="max-w-[1400px] mx-auto px-[5%] py-10 text-ink-secondary">Laster...</p>;
   if (!profile) return <p className="max-w-[1400px] mx-auto px-[5%] py-10">Bruker ikke funnet.</p>;
@@ -147,6 +159,35 @@ export default function ProfilePage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+        {isOwn && favorites.length > 0 && (
+          <div className="mt-12">
+            <h2 className="text-xl font-semibold text-ink mb-5">Likte annonser</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+              {favorites.map((listing) => (
+                <div
+                  key={listing.id}
+                  onClick={() => router.push(`/listings/${listing.id}`)}
+                  className="group cursor-pointer rounded-2xl overflow-hidden border border-line bg-surface shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg"
+                >
+                  <div className="h-40 w-full overflow-hidden bg-subtle">
+                    {listing.images && listing.images.length > 0 ? (
+                      <img src={listing.images[0].url} alt={listing.title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-sm text-ink-muted">Ingen bilde</div>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-medium truncate text-ink">{listing.title}</h3>
+                    <p className="font-semibold mt-1 text-lg text-ink">
+                      {(listing.price_ore / 100).toLocaleString("nb-NO")} kr
+                    </p>
+                    <p className="text-sm mt-1 text-ink-secondary">{listing.municipality}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </section>

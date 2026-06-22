@@ -91,9 +91,12 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
+	liked := h.likedSet(c)
+
 	type listingWithImages struct {
 		db.Listing
-		Images []db.ListingImage `json:"images"`
+		Images    []db.ListingImage `json:"images"`
+		LikedByMe bool              `json:"liked_by_me"`
 	}
 	result := make([]listingWithImages, 0, len(listings))
 	for _, l := range listings {
@@ -101,7 +104,11 @@ func (h *Handler) List(c *gin.Context) {
 		if imgs == nil {
 			imgs = []db.ListingImage{}
 		}
-		result = append(result, listingWithImages{Listing: l, Images: imgs})
+		result = append(result, listingWithImages{
+			Listing:   l,
+			Images:    imgs,
+			LikedByMe: liked[uuid.UUID(l.ID.Bytes).String()],
+		})
 	}
 
 	c.JSON(http.StatusOK, result)
@@ -141,10 +148,24 @@ func (h *Handler) GetOne(c *gin.Context) {
 		similarOut = append(similarOut, listingWithImages{Listing: s, Images: imgs})
 	}
 
+	likeCount, _ := h.Queries.CountFavorites(context.Background(), listing.ID)
+
+	likedByMe := false
+	if uidStr := c.GetString("userID"); uidStr != "" {
+		if uid, err := uuid.Parse(uidStr); err == nil {
+			likedByMe, _ = h.Queries.IsFavorited(context.Background(), db.IsFavoritedParams{
+				UserID:    pgUUID(uid),
+				ListingID: listing.ID,
+			})
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"listing": listing,
-		"images":  images,
-		"similar": similarOut,
+		"listing":     listing,
+		"images":      images,
+		"similar":     similarOut,
+		"like_count":  likeCount,
+		"liked_by_me": likedByMe,
 		"seller": gin.H{
 			"id":           seller.ID,
 			"name":         seller.Name,
@@ -315,9 +336,12 @@ func (h *Handler) Search(c *gin.Context) {
 		return
 	}
 
+	liked := h.likedSet(c)
+
 	type listingWithImages struct {
 		db.Listing
-		Images []db.ListingImage `json:"images"`
+		Images    []db.ListingImage `json:"images"`
+		LikedByMe bool              `json:"liked_by_me"`
 	}
 	out := make([]listingWithImages, 0, len(results))
 	for _, l := range results {
@@ -325,7 +349,11 @@ func (h *Handler) Search(c *gin.Context) {
 		if imgs == nil {
 			imgs = []db.ListingImage{}
 		}
-		out = append(out, listingWithImages{Listing: l, Images: imgs})
+		out = append(out, listingWithImages{
+			Listing:   l,
+			Images:    imgs,
+			LikedByMe: liked[uuid.UUID(l.ID.Bytes).String()],
+		})
 	}
 
 	c.JSON(http.StatusOK, out)
@@ -409,4 +437,26 @@ func sanitize(s string) string {
 		}
 	}
 	return string(out)
+}
+
+// likedSet returns the set of listing IDs the given user has favorited.
+// Returns an empty set if userID is empty (logged out).
+func (h *Handler) likedSet(c *gin.Context) map[string]bool {
+	set := map[string]bool{}
+	uidStr := c.GetString("userID")
+	if uidStr == "" {
+		return set
+	}
+	uid, err := uuid.Parse(uidStr)
+	if err != nil {
+		return set
+	}
+	ids, err := h.Queries.ListFavoriteIDsByUser(context.Background(), pgUUID(uid))
+	if err != nil {
+		return set
+	}
+	for _, id := range ids {
+		set[uuid.UUID(id.Bytes).String()] = true
+	}
+	return set
 }

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Total — Kjøp og selg",
+  title: "Wisp — Kjøp og selg",
   description: "Buy and sell secondhand items",
 };
 

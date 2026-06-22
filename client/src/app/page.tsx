@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { CATEGORIES } from "@/lib/categories";
@@ -15,14 +15,16 @@ type Listing = {
   county: string;
   municipality: string;
   ad_type?: string;
+  liked_by_me?: boolean;
   images?: Image[];
 };
 
-export default function HomePage() {
+function HomeInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState({
     query: "",
     category: "",
@@ -35,6 +37,14 @@ export default function HomePage() {
   });
   const [isSearchResult, setIsSearchResult] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+
+  function seedLiked(data: Listing[]) {
+    const ids = new Set<string>();
+    (data ?? []).forEach((l) => {
+      if (l.liked_by_me) ids.add(l.id);
+    });
+    setLikedIds(ids);
+  }
 
   useEffect(() => {
     try {
@@ -50,7 +60,10 @@ export default function HomePage() {
       setIsSearchResult(false);
       setFilters({ query: "", category: "", county: "", condition: "", ad_type: "", min_price: "", max_price: "", sort_by: "newest" });
       api("/api/listings")
-        .then((data) => setListings(data ?? []))
+        .then((data) => {
+          setListings(data ?? []);
+          seedLiked(data ?? []);
+        })
         .catch(() => {})
         .finally(() => setLoading(false));
     }
@@ -95,6 +108,7 @@ export default function HomePage() {
         body: JSON.stringify(body),
       });
       setListings(data ?? []);
+      seedLiked(data ?? []);
       setIsSearchResult(true);
       if (f.query) saveSearch(f.query);
     } catch (err) {
@@ -110,6 +124,7 @@ export default function HomePage() {
     try {
       const data = await api("/api/listings");
       setListings(data ?? []);
+      seedLiked(data ?? []);
       setIsSearchResult(false);
     } finally {
       setLoading(false);
@@ -120,6 +135,32 @@ export default function HomePage() {
     const next = filters.category === cat ? "" : cat;
     setFilters((prev) => ({ ...prev, category: next }));
     runSearch({ category: next });
+  }
+
+  async function toggleLike(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+    const isLiked = likedIds.has(id);
+    setLikedIds((prev) => {
+      const next = new Set(prev);
+      if (isLiked) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    try {
+      await api(`/api/listings/${id}/favorite`, { method: isLiked ? "DELETE" : "POST" });
+    } catch {
+      setLikedIds((prev) => {
+        const next = new Set(prev);
+        if (isLiked) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+    }
   }
 
   const inputClass = "w-full border border-line rounded-lg px-3 py-2 text-sm outline-none focus:border-brand";
@@ -254,6 +295,13 @@ export default function HomePage() {
                   className="group cursor-pointer rounded-2xl overflow-hidden border border-line bg-surface shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-xl"
                 >
                   <div className="h-44 w-full overflow-hidden bg-subtle relative">
+                    <button
+                      onClick={(e) => toggleLike(e, listing.id)}
+                      className="absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-surface/90 backdrop-blur flex items-center justify-center text-lg hover:scale-110 transition-transform shadow-sm"
+                      aria-label="Lik annonse"
+                    >
+                      {likedIds.has(listing.id) ? "❤️" : "🤍"}
+                    </button>
                     {listing.images && listing.images.length > 0 ? (
                       <img src={listing.images[0].url} alt={listing.title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
                     ) : (
@@ -263,7 +311,7 @@ export default function HomePage() {
                       {listing.category}
                     </span>
                     {listing.ad_type === "giveaway" && (
-                      <span className="absolute top-3 right-3 px-2 py-1 rounded-full text-xs font-medium bg-brand text-white">
+                      <span className="absolute bottom-3 left-3 px-2 py-1 rounded-full text-xs font-medium bg-brand text-white">
                         Gis bort
                       </span>
                     )}
@@ -282,5 +330,13 @@ export default function HomePage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<main className="max-w-[1400px] mx-auto px-[5%] py-8 text-ink-secondary">Laster...</main>}>
+      <HomeInner />
+    </Suspense>
   );
 }

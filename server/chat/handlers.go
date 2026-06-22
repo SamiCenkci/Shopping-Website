@@ -90,6 +90,7 @@ func (h *Handler) List(c *gin.Context) {
 		ListingTitle string `json:"listing_title"`
 		ListingImage string `json:"listing_image"`
 		LastMessage  string `json:"last_message"`
+		Unread       int64  `json:"unread"`
 	}
 
 	out := make([]enriched, 0, len(convs))
@@ -115,13 +116,43 @@ func (h *Handler) List(c *gin.Context) {
 		}
 
 		if msgs, err := h.Queries.ListMessages(context.Background(), conv.ID); err == nil && len(msgs) > 0 {
-			e.LastMessage = msgs[len(msgs)-1].Content
+			last := msgs[len(msgs)-1]
+			if last.Content != "" {
+				e.LastMessage = last.Content
+			} else if last.AttachmentName != "" {
+				e.LastMessage = "📎 " + last.AttachmentName
+			}
+		}
+
+		if cnt, err := h.Queries.CountUnreadInConversation(context.Background(), db.CountUnreadInConversationParams{
+			ConversationID: conv.ID,
+			SenderID:       pgUUID(userID),
+		}); err == nil {
+			e.Unread = cnt
 		}
 
 		out = append(out, e)
 	}
 
 	c.JSON(http.StatusOK, out)
+}
+
+// GET /api/messages/unread-count
+func (h *Handler) UnreadCount(c *gin.Context) {
+	userIDStr := c.GetString("userID")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user"})
+		return
+	}
+
+	count, err := h.Queries.CountUnreadForUser(context.Background(), pgUUID(userID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"count": count})
 }
 
 // GET /api/conversations/:id/messages
@@ -164,7 +195,9 @@ func (h *Handler) Messages(c *gin.Context) {
 }
 
 type sendRequest struct {
-	Content string `json:"content" binding:"required"`
+	Content        string `json:"content"`
+	AttachmentURL  string `json:"attachment_url"`
+	AttachmentName string `json:"attachment_name"`
 }
 
 func (h *Handler) Send(c *gin.Context) {
@@ -197,10 +230,18 @@ func (h *Handler) Send(c *gin.Context) {
 		return
 	}
 
+	// A message must have either text or an attachment
+	if req.Content == "" && req.AttachmentURL == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "melding kan ikke være tom"})
+		return
+	}
+
 	msg, err := h.Queries.CreateMessage(context.Background(), db.CreateMessageParams{
 		ConversationID: pgUUID(convID),
 		SenderID:       pgUUID(userID),
 		Content:        req.Content,
+		AttachmentUrl:  req.AttachmentURL,
+		AttachmentName: req.AttachmentName,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

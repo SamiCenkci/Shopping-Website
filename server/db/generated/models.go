@@ -55,6 +55,8 @@ type Message struct {
 	Content        string             `json:"content"`
 	ReadAt         pgtype.Timestamptz `json:"read_at"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	AttachmentUrl  string             `json:"attachment_url"`
+	AttachmentName string             `json:"attachment_name"`
 }
 
 type Token struct {

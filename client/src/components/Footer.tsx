@@ -6,7 +6,7 @@ export default function Footer() {
       <div className="max-w-[1400px] mx-auto px-[5%] py-10">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 text-center sm:text-left">
           <div>
-            <span className="font-bold text-brand text-lg tracking-tight">Total</span>
+            <span className="font-bold text-brand text-lg tracking-tight">Wisp</span>
             <p className="text-sm text-ink-secondary mt-1">Kjøp og selg brukte ting, enkelt og trygt.</p>
           </div>
           <div className="flex flex-wrap justify-center items-center gap-x-6 gap-y-2 text-sm text-ink-secondary">
@@ -17,7 +17,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="border-t border-line mt-8 pt-6 text-xs text-ink-muted text-center">
-          © {new Date().getFullYear()} Total. Laget med Next.js og Go.
+          © {new Date().getFullYear()} Wisp. Laget med Next.js og Go.
         </div>
       </div>
     </footer>

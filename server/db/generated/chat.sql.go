@@ -11,20 +11,62 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countUnreadForUser = `-- name: CountUnreadForUser :one
+SELECT COUNT(*) FROM messages m
+JOIN conversations c ON c.id = m.conversation_id
+WHERE (c.buyer_id = $1 OR c.seller_id = $1)
+  AND m.sender_id != $1
+  AND m.read_at IS NULL
+`
+
+func (q *Queries) CountUnreadForUser(ctx context.Context, buyerID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnreadForUser, buyerID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countUnreadInConversation = `-- name: CountUnreadInConversation :one
+SELECT COUNT(*) FROM messages
+WHERE conversation_id = $1
+  AND sender_id != $2
+  AND read_at IS NULL
+`
+
+type CountUnreadInConversationParams struct {
+	ConversationID pgtype.UUID `json:"conversation_id"`
+	SenderID       pgtype.UUID `json:"sender_id"`
+}
+
+func (q *Queries) CountUnreadInConversation(ctx context.Context, arg CountUnreadInConversationParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnreadInConversation, arg.ConversationID, arg.SenderID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createMessage = `-- name: CreateMessage :one
-INSERT INTO messages (conversation_id, sender_id, content)
-VALUES ($1, $2, $3)
-RETURNING id, conversation_id, sender_id, content, read_at, created_at
+INSERT INTO messages (conversation_id, sender_id, content, attachment_url, attachment_name)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, conversation_id, sender_id, content, read_at, created_at, attachment_url, attachment_name
 `
 
 type CreateMessageParams struct {
 	ConversationID pgtype.UUID `json:"conversation_id"`
 	SenderID       pgtype.UUID `json:"sender_id"`
 	Content        string      `json:"content"`
+	AttachmentUrl  string      `json:"attachment_url"`
+	AttachmentName string      `json:"attachment_name"`
 }
 
 func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error) {
-	row := q.db.QueryRow(ctx, createMessage, arg.ConversationID, arg.SenderID, arg.Content)
+	row := q.db.QueryRow(ctx, createMessage,
+		arg.ConversationID,
+		arg.SenderID,
+		arg.Content,
+		arg.AttachmentUrl,
+		arg.AttachmentName,
+	)
 	var i Message
 	err := row.Scan(
 		&i.ID,
@@ -33,6 +75,8 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		&i.Content,
 		&i.ReadAt,
 		&i.CreatedAt,
+		&i.AttachmentUrl,
+		&i.AttachmentName,
 	)
 	return i, err
 }
@@ -113,7 +157,7 @@ func (q *Queries) ListConversationsForUser(ctx context.Context, buyerID pgtype.U
 }
 
 const listMessages = `-- name: ListMessages :many
-SELECT id, conversation_id, sender_id, content, read_at, created_at FROM messages
+SELECT id, conversation_id, sender_id, content, read_at, created_at, attachment_url, attachment_name FROM messages
 WHERE conversation_id = $1
 ORDER BY created_at ASC
 `
@@ -134,6 +178,8 @@ func (q *Queries) ListMessages(ctx context.Context, conversationID pgtype.UUID) 
 			&i.Content,
 			&i.ReadAt,
 			&i.CreatedAt,
+			&i.AttachmentUrl,
+			&i.AttachmentName,
 		); err != nil {
 			return nil, err
 		}

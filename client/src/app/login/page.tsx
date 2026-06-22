@@ -35,7 +35,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <button onClick={() => router.push("/")} className="text-3xl font-bold text-brand tracking-tight">
-            Total
+            Wisp
           </button>
           <p className="text-ink-secondary mt-2">Logg inn for å fortsette</p>
         </div>

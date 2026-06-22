@@ -1,0 +1,2 @@
+ALTER TABLE messages ADD COLUMN attachment_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE messages ADD COLUMN attachment_name TEXT NOT NULL DEFAULT '';
